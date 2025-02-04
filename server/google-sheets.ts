@@ -17,7 +17,7 @@ interface BlacklistSheet {
 }
 
 const blacklistSheets: BlacklistSheet[] = [
-  { name: 'Yanashpa', dniColumn: 2 }, // Columna C
+  { name: 'Yanashpa Village', dniColumn: 2 }, // Columna C
   { name: 'Resort', dniColumn: 1 }, // Columna B
   { name: 'Procesos de demanda', dniColumn: 1 }, // Columna B
 ];
@@ -30,7 +30,7 @@ export async function checkBlacklist(dni: string): Promise<boolean> {
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: BLACKLIST_SHEET_ID,
-        range: `${sheet.name}!A:Z`, // Obtener todas las columnas para asegurarnos
+        range: `'${sheet.name}'!A:Z`, // Agregar comillas simples para manejar espacios en el nombre
       });
 
       const values = response.data.values || [];
