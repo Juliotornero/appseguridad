@@ -1,5 +1,4 @@
 import { google } from 'googleapis';
-import type { SheetData } from '@shared/schema';
 
 const BLACKLIST_SHEET_ID = '1P2XznuOAJPvcta-BX6Rek0S0WMT6GzTnBXkGQzqeaLU';
 const CHECKIN_SHEET_ID = '15vorLVe0OnGKztodinmQ4aY-wkoj7AXnfPTYPMDJt04';
@@ -13,16 +12,38 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 interface BlacklistSheet {
   name: string;
-  dniColumn: number; // Índice base 0
+  dniColumn: number;
+  nameColumn: number;
+  message: string;
 }
 
 const blacklistSheets: BlacklistSheet[] = [
-  { name: 'Yanashpa Village', dniColumn: 2 }, // Columna C
-  { name: 'Resort', dniColumn: 1 }, // Columna B
-  { name: 'Procesos de demanda', dniColumn: 1 }, // Columna B
+  { 
+    name: 'Yanashpa Village',
+    dniColumn: 2, // Columna C
+    nameColumn: 1, // Columna B
+    message: 'no puede ingresar con acompañantes debido a que no ha pagado el mantenimiento'
+  },
+  { 
+    name: 'Resort',
+    dniColumn: 1, // Columna B
+    nameColumn: 0, // Columna A
+    message: 'es no grata y por políticas no puede ingresar'
+  },
+  { 
+    name: 'Procesos de demanda',
+    dniColumn: 1, // Columna B
+    nameColumn: 0, // Columna A
+    message: 'tiene un proceso de demanda y no puede ingresar'
+  }
 ];
 
-export async function checkBlacklist(dni: string): Promise<boolean> {
+export async function checkBlacklist(dni: string): Promise<{ 
+  found: boolean;
+  sheetName?: string;
+  name?: string;
+  message?: string;
+}> {
   try {
     // Verificar cada hoja del blacklist
     for (const sheet of blacklistSheets) {
@@ -30,36 +51,54 @@ export async function checkBlacklist(dni: string): Promise<boolean> {
 
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: BLACKLIST_SHEET_ID,
-        range: `'${sheet.name}'!A:Z`, // Agregar comillas simples para manejar espacios en el nombre
+        range: `'${sheet.name}'!A:Z`, // Agregar comillas simples para manejar espacios
       });
 
       const values = response.data.values || [];
 
       // Buscar el DNI en la columna específica de esta hoja
-      const found = values.some(row => {
-        // Asegurarse de que la fila tiene suficientes columnas
-        if (row.length > sheet.dniColumn) {
-          const cellValue = row[sheet.dniColumn].toString().trim();
-          return cellValue === dni.trim();
-        }
-        return false;
+      const rowIndex = values.findIndex(row => {
+        return row.length > sheet.dniColumn && 
+               row[sheet.dniColumn].toString().trim() === dni.trim();
       });
 
-      if (found) {
+      if (rowIndex !== -1) {
+        const row = values[rowIndex];
+        const name = row[sheet.nameColumn] || 'No especificado';
         console.log(`DNI ${dni} found in blacklist sheet ${sheet.name}`);
-        return true;
+        return {
+          found: true,
+          sheetName: sheet.name,
+          name,
+          message: sheet.message
+        };
       }
     }
 
     console.log(`DNI ${dni} not found in any blacklist sheet`);
-    return false;
+    return { found: false };
   } catch (error) {
     console.error('Error checking blacklist:', error);
     throw error;
   }
 }
 
-interface CheckInData {
+// Columnas donde puede estar el DNI en el sheet de check-in
+const DNI_COLUMNS = [
+  8,    // I - DNI principal
+  13,   // N - Invitado 1
+  16,   // Q - Invitado 2
+  19,   // T - Invitado 3
+  22,   // W - Invitado 4
+  25,   // Z - Invitado 5
+  28,   // AC - Invitado 6
+  31,   // AF - Invitado 7
+  34,   // AI - Invitado 8
+  37,   // AL - Invitado 9
+  40    // AO - Invitado 10
+];
+
+export interface CheckInData {
   fillDate: string;
   fillTime: string;
   names: string;
@@ -82,30 +121,38 @@ export async function getLatestCheckIn(dni: string): Promise<CheckInData | null>
     console.log(`Fetching check-in data for DNI ${dni}`);
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: CHECKIN_SHEET_ID,
-      range: 'Form Responses 1!A2:BQ', // Excluyendo la fila de encabezados
+      range: "'Check in'", // Solo especificamos el nombre de la hoja
     });
 
     const values = response.data.values || [];
 
-    // Filtrar por DNI y ordenar por fecha descendente
-    const matchingRows = values
-      .filter(row => {
-        // Asegurarse de que la fila tiene la columna del DNI (columna I, índice 8)
-        return row.length > 8 && row[8]?.toString().trim() === dni.trim();
-      })
-      .sort((a, b) => {
-        // Columna AQ (índice 42) contiene la fecha de check-in
-        const dateA = new Date(a[42] || '');
-        const dateB = new Date(b[42] || '');
-        return dateB.getTime() - dateA.getTime();
+    console.log(`Got ${values.length} rows from check-in sheet`);
+
+    // Filtrar filas donde el DNI aparezca en cualquiera de las columnas definidas
+    const matchingRows = values.filter(row => {
+      return DNI_COLUMNS.some(colIndex => {
+        const hasMatch = row.length > colIndex && 
+               row[colIndex]?.toString().trim() === dni.trim();
+        if (hasMatch) {
+          console.log(`Found DNI ${dni} in column ${colIndex}`);
+        }
+        return hasMatch;
       });
+    });
 
     if (matchingRows.length === 0) {
       console.log(`No check-in records found for DNI ${dni}`);
       return null;
     }
 
-    const latestRow = matchingRows[0];
+    // Ordenar por fecha de check-in (columna AQ, índice 42)
+    const sortedRows = matchingRows.sort((a, b) => {
+      const dateA = new Date(a[42] || '');
+      const dateB = new Date(b[42] || '');
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    const latestRow = sortedRows[0];
     console.log(`Found latest check-in record for DNI ${dni} from date ${latestRow[42]}`);
 
     return {
@@ -123,7 +170,7 @@ export async function getLatestCheckIn(dni: string): Promise<CheckInData | null>
       checkInDate: latestRow[42] || '', // AQ
       checkInTime: latestRow[43] || '', // AR
       checkOutDate: latestRow[44] || '', // AS
-      property: latestRow[68] || '', // BQ
+      property: latestRow[67] || '', // BQ
     };
   } catch (error) {
     console.error('Error fetching check-in data:', error);
@@ -131,7 +178,8 @@ export async function getLatestCheckIn(dni: string): Promise<CheckInData | null>
   }
 }
 
-export async function getAllSheetData(): Promise<SheetData[]> {
+// Función para verificar el acceso a los sheets
+export async function getAllSheetData(): Promise<void> {
   try {
     // Log authentication details
     const credentials = await auth.getCredentials();
@@ -139,7 +187,6 @@ export async function getAllSheetData(): Promise<SheetData[]> {
     console.log('Checking access to spreadsheet:', BLACKLIST_SHEET_ID, CHECKIN_SHEET_ID);
 
     // Get spreadsheet metadata to get all sheet names
-
     const spreadsheetBlacklist = await sheets.spreadsheets.get({
       spreadsheetId: BLACKLIST_SHEET_ID,
     });
@@ -147,46 +194,14 @@ export async function getAllSheetData(): Promise<SheetData[]> {
       spreadsheetId: CHECKIN_SHEET_ID,
     });
 
-    const sheetNamesBlacklist = spreadsheetBlacklist.data.sheets?.map(sheet => sheet.properties?.title) || [];
-    const sheetNamesCheckIn = spreadsheetCheckIn.data.sheets?.map(sheet => sheet.properties?.title) || [];
+    const sheetNamesBlacklist = spreadsheetBlacklist.data.sheets?.map(sheet => sheet.properties?.title);
+    const sheetNamesCheckIn = spreadsheetCheckIn.data.sheets?.map(sheet => sheet.properties?.title);
 
-    console.log('Successfully accessed spreadsheet. Found sheets:', sheetNamesBlacklist, sheetNamesCheckIn);
+    console.log('Successfully accessed spreadsheets. Found sheets:', {
+      blacklist: sheetNamesBlacklist,
+      checkin: sheetNamesCheckIn
+    });
 
-    const allSheetData: SheetData[] = [];
-
-    // Get data from each sheet
-    const allSheetNames = [...sheetNamesBlacklist, ...sheetNamesCheckIn];
-    const allSpreadsheetIds = [BLACKLIST_SHEET_ID, CHECKIN_SHEET_ID];
-    for (let i = 0; i < allSheetNames.length; i++) {
-        const sheetName = allSheetNames[i];
-        const spreadsheetId = allSpreadsheetIds[i];
-      if (!sheetName) continue;
-
-      console.log(`Fetching data from sheet: ${sheetName} from spreadsheet: ${spreadsheetId}`);
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: spreadsheetId,
-        range: sheetName,
-      });
-
-      const values = response.data.values || [];
-      if (values.length === 0) {
-        console.log(`No data found in sheet: ${sheetName}`);
-        continue;
-      }
-
-      const headers = values[0].map(String);
-      const rows = values.slice(1).map(row => row.map(String));
-
-      console.log(`Successfully processed ${rows.length} rows from sheet: ${sheetName}`);
-
-      allSheetData.push({
-        sheetName,
-        headers,
-        rows,
-      });
-    }
-
-    return allSheetData;
   } catch (error) {
     console.error('Error details:', error);
     throw error;
