@@ -1,16 +1,39 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { getAllSheetData } from './google-sheets';
+import { checkBlacklist, getLatestCheckIn } from './google-sheets';
 
 export function registerRoutes(app: Express): Server {
-  // Google Sheets data endpoint
-  app.get('/api/sheets', async (_req, res) => {
+  // Endpoint para verificar DNI
+  app.get('/api/check-dni/:dni', async (req, res) => {
     try {
-      const data = await getAllSheetData();
-      res.json(data);
+      const { dni } = req.params;
+
+      // Primero verificar si está en la lista negra
+      const isBlacklisted = await checkBlacklist(dni);
+
+      if (isBlacklisted) {
+        return res.json({ status: 'blacklisted' });
+      }
+
+      // Si no está en la lista negra, buscar su último check-in
+      const checkInData = await getLatestCheckIn(dni);
+
+      if (checkInData) {
+        return res.json({
+          status: 'found',
+          data: checkInData
+        });
+      }
+
+      // Si no se encuentra en ninguna lista
+      return res.json({ status: 'not_found' });
+
     } catch (error) {
-      console.error('Error fetching sheets:', error);
-      res.status(500).json({ message: 'Failed to fetch spreadsheet data' });
+      console.error('Error checking DNI:', error);
+      res.status(500).json({ 
+        status: 'error',
+        message: 'Error al verificar el DNI' 
+      });
     }
   });
 

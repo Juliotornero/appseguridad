@@ -11,19 +11,14 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { useQuery } from "@tanstack/react-query";
-import type { AllSheetsData } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 export function DniSearch() {
   const [dni, setDni] = useState("");
-  const [showAlert, setShowAlert] = useState(false);
+  const [showBlacklistAlert, setShowBlacklistAlert] = useState(false);
   const { toast } = useToast();
 
-  const { data: sheets } = useQuery<AllSheetsData>({
-    queryKey: ['/api/sheets'],
-  });
-
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!dni.trim()) {
       toast({
         title: "Error",
@@ -33,26 +28,40 @@ export function DniSearch() {
       return;
     }
 
-    if (!sheets) {
+    try {
+      const response = await fetch(`/api/check-dni/${dni.trim()}`);
+      if (!response.ok) {
+        throw new Error('Error al verificar el DNI');
+      }
+
+      const data = await response.json();
+
+      switch (data.status) {
+        case 'blacklisted':
+          setShowBlacklistAlert(true);
+          break;
+        case 'found':
+          // Aquí podríamos navegar a la página de detalles con los datos
+          window.location.href = `/guest/${dni}`;
+          break;
+        case 'not_found':
+          toast({
+            title: "Resultado",
+            description: "La persona no está registrada en el sistema",
+          });
+          break;
+        default:
+          toast({
+            title: "Error",
+            description: "Error al verificar el DNI",
+            variant: "destructive",
+          });
+      }
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Error al cargar los datos",
+        description: "Error al verificar el DNI",
         variant: "destructive",
-      });
-      return;
-    }
-
-    // Buscar el DNI en todas las hojas
-    const foundInAnySheet = sheets.some(sheet =>
-      sheet.rows.some(row => row.includes(dni.trim()))
-    );
-
-    if (foundInAnySheet) {
-      setShowAlert(true);
-    } else {
-      toast({
-        title: "Resultado",
-        description: "La persona no está en la lista de no gratos",
       });
     }
   };
@@ -81,7 +90,7 @@ export function DniSearch() {
         Buscar
       </Button>
 
-      <AlertDialog open={showAlert} onOpenChange={setShowAlert}>
+      <AlertDialog open={showBlacklistAlert} onOpenChange={setShowBlacklistAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¡Alerta!</AlertDialogTitle>
