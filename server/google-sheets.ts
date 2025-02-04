@@ -13,10 +13,10 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 export async function getAllSheetData(): Promise<SheetData[]> {
   try {
-    // Log the service account email for sharing purposes
-    const client = await auth.getClient();
-    const email = await auth.getCredentials();
-    console.log('Service Account Email:', (email as any).client_email);
+    // Log authentication details
+    const credentials = await auth.getCredentials();
+    console.log('Attempting to authenticate with service account:', (credentials as any).client_email);
+    console.log('Checking access to spreadsheet:', SPREADSHEET_ID);
 
     // Get spreadsheet metadata to get all sheet names
     const spreadsheet = await sheets.spreadsheets.get({
@@ -24,7 +24,7 @@ export async function getAllSheetData(): Promise<SheetData[]> {
     });
 
     const sheetNames = spreadsheet.data.sheets?.map(sheet => sheet.properties?.title) || [];
-    console.log('Found sheets:', sheetNames);
+    console.log('Successfully accessed spreadsheet. Found sheets:', sheetNames);
 
     const allSheetData: SheetData[] = [];
 
@@ -47,7 +47,7 @@ export async function getAllSheetData(): Promise<SheetData[]> {
       const headers = values[0].map(String);
       const rows = values.slice(1).map(row => row.map(String));
 
-      console.log(`Processed ${rows.length} rows from sheet: ${sheetName}`);
+      console.log(`Successfully processed ${rows.length} rows from sheet: ${sheetName}`);
 
       allSheetData.push({
         sheetName,
@@ -58,7 +58,7 @@ export async function getAllSheetData(): Promise<SheetData[]> {
 
     return allSheetData;
   } catch (error) {
-    console.error('Error fetching sheet data:', error);
+    console.error('Error details:', error);
     throw error;
   }
 }
