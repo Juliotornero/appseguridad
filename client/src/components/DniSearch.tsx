@@ -12,25 +12,54 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useQuery } from "@tanstack/react-query";
 import type { AllSheetsData } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 export function DniSearch() {
   const [dni, setDni] = useState("");
   const [showAlert, setShowAlert] = useState(false);
+  const { toast } = useToast();
 
   const { data: sheets } = useQuery<AllSheetsData>({
     queryKey: ['/api/sheets'],
   });
 
   const handleSearch = () => {
-    if (!dni || !sheets) return;
+    if (!dni.trim()) {
+      toast({
+        title: "Error",
+        description: "Por favor ingrese un DNI",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!sheets) {
+      toast({
+        title: "Error",
+        description: "Error al cargar los datos",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Buscar el DNI en todas las hojas
     const foundInAnySheet = sheets.some(sheet =>
-      sheet.rows.some(row => row.includes(dni))
+      sheet.rows.some(row => row.includes(dni.trim()))
     );
 
     if (foundInAnySheet) {
       setShowAlert(true);
+    } else {
+      toast({
+        title: "Resultado",
+        description: "La persona no está en la lista de no gratos",
+      });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
     }
   };
 
@@ -41,6 +70,7 @@ export function DniSearch() {
         placeholder="Ingrese DNI"
         value={dni}
         onChange={(e) => setDni(e.target.value)}
+        onKeyDown={handleKeyDown}
         className="text-lg"
       />
       <Button 
