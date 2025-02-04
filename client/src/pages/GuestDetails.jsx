@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileText, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function GuestDetails() {
@@ -53,6 +53,10 @@ export default function GuestDetails() {
 
   if (!checkInData) return null;
 
+  const isImage = checkInData.documentUrl?.toLowerCase().endsWith('.jpeg') || 
+                 checkInData.documentUrl?.toLowerCase().endsWith('.jpg') || 
+                 checkInData.documentUrl?.toLowerCase().endsWith('.png');
+
   return (
     <div className="min-h-screen bg-background px-4 py-8">
       <div className="container max-w-3xl mx-auto">
@@ -92,6 +96,31 @@ export default function GuestDetails() {
               </div>
             </div>
           </div>
+
+          {checkInData.documentUrl && (
+            <div className="mt-6">
+              <h2 className="font-semibold mb-4">Documento de Identidad</h2>
+              {isImage ? (
+                <div className="rounded-lg overflow-hidden border">
+                  <img 
+                    src={checkInData.documentUrl} 
+                    alt="Documento de identidad"
+                    className="w-full h-auto max-h-96 object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="flex justify-center">
+                  <Button 
+                    onClick={() => window.open(checkInData.documentUrl, '_blank')}
+                    className="flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Ver PDF del documento
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       </div>
     </div>

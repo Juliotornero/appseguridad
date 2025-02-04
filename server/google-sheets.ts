@@ -114,6 +114,7 @@ export interface CheckInData {
   checkInTime: string;
   checkOutDate: string;
   property: string;
+  documentUrl?: string; // Add this field
 }
 
 export async function getLatestCheckIn(dni: string): Promise<CheckInData | null> {
@@ -171,6 +172,7 @@ export async function getLatestCheckIn(dni: string): Promise<CheckInData | null>
       checkInTime: latestRow[43] || '', // AR
       checkOutDate: latestRow[44] || '', // AS
       property: latestRow[67] || '', // BQ
+      documentUrl: latestRow[72] || '', // BU - URL del documento
     };
   } catch (error) {
     console.error('Error fetching check-in data:', error);
